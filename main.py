@@ -1,17 +1,15 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
-import smtplib
 import os
 import csv
-from email.mime.text import MIMEText
+import requests
 
 app = FastAPI()
 
-# Secure config from environment variables
-sender_email = os.getenv("GMAIL_USER")
-sender_password = os.getenv("GMAIL_APP_PASSWORD")
+# Resend API Key
+RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
-# CSV file name
+# CSV file
 csv_file = "leads.csv"
 
 # Create CSV file with header if not exists
@@ -19,6 +17,50 @@ if not os.path.exists(csv_file):
     with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow(["Name", "Email", "Phone", "Company"])
+
+
+def send_email(name, email, phone, company):
+    url = "https://api.resend.com/emails"
+
+    headers = {
+        "Authorization": f"Bearer {RESEND_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    # 1. Admin mail
+    admin_data = {
+        "from": "onboarding@resend.dev",
+        "to": ["mailtomemohan94@gmail.com"],
+        "subject": "New Demo Request",
+        "html": f"""
+        <h2>New Demo Request</h2>
+        <p><b>Name:</b> {name}</p>
+        <p><b>Email:</b> {email}</p>
+        <p><b>Phone:</b> {phone}</p>
+        <p><b>Company:</b> {company}</p>
+        """
+    }
+
+    # 2. Customer auto reply
+    user_data = {
+        "from": "onboarding@resend.dev",
+        "to": [email],
+        "subject": "Thanks for contacting us",
+        "html": f"""
+        <h2>Thanks for contacting us</h2>
+        <p>Hi {name},</p>
+        <p>Thanks for your interest.</p>
+        <p>We have received your demo request.</p>
+        <p>Our team will contact you shortly.</p>
+        <p>Regards,<br>Mohan</p>
+        """
+    }
+
+    admin_response = requests.post(url, json=admin_data, headers=headers)
+    print("Admin mail:", admin_response.text)
+
+    user_response = requests.post(url, json=user_data, headers=headers)
+    print("User mail:", user_response.text)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -64,14 +106,11 @@ def home():
                 button:hover {
                     background-color: #45a049;
                 }
-                .note {
-                    color: #555;
-                }
             </style>
         </head>
         <body>
             <h1>Demo Request Form</h1>
-            <p class="note">Please enter your details below.</p>
+            <p>Please enter your details below.</p>
 
             <form action="/submit" method="post">
                 <label>Name:</label>
@@ -106,55 +145,10 @@ def submit(
         writer.writerow([name, email, phone, company])
 
     try:
-        if not sender_email or not sender_password:
-            raise Exception("Email environment variables not set")
+        if not RESEND_API_KEY:
+            raise Exception("RESEND_API_KEY not set")
 
-        # 1. Send lead email to admin
-        subject_admin = "New Lead Received"
-        body_admin = f"""
-New Customer Details:
-
-Name: {name}
-Email: {email}
-Phone: {phone}
-Company: {company}
-"""
-
-        msg_admin = MIMEText(body_admin)
-        msg_admin["Subject"] = subject_admin
-        msg_admin["From"] = sender_email
-        msg_admin["To"] = sender_email
-
-        # 2. Send auto reply to customer
-        subject_user = "Thanks for contacting us"
-        body_user = f"""
-Hi {name},
-
-Thanks for your interest.
-
-We have received your demo request.
-Our team will contact you shortly.
-
-Regards,
-Mohan
-"""
-
-        msg_user = MIMEText(body_user)
-        msg_user["Subject"] = subject_user
-        msg_user["From"] = sender_email
-        msg_user["To"] = email
-
-        # SMTP send
-        server = smtplib.SMTP("smtp.gmail.com", 587)
-        server.starttls()
-        server.login(sender_email, sender_password)
-
-        server.send_message(msg_admin)
-        server.send_message(msg_user)
-
-        server.quit()
-
-        print("Both Emails Sent Successfully")
+        send_email(name, email, phone, company)
 
     except Exception as e:
         print("Error:", e)
