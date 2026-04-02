@@ -1,18 +1,21 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from starlette.requests import Request
 import os
 import csv
 import requests
 
 app = FastAPI()
 
-# Resend API Key
+templates = Jinja2Templates(directory="templates")
+app.mount("/images", StaticFiles(directory="images"), name="images")
+
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 
-# CSV file
 csv_file = "leads.csv"
 
-# Create CSV file with header if not exists
 if not os.path.exists(csv_file):
     with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
@@ -27,7 +30,6 @@ def send_email(name, email, phone, company):
         "Content-Type": "application/json"
     }
 
-    # 1. Admin mail
     admin_data = {
         "from": "onboarding@resend.dev",
         "to": ["mailtomemohan94@gmail.com"],
@@ -41,7 +43,6 @@ def send_email(name, email, phone, company):
         """
     }
 
-    # 2. Customer auto reply
     user_data = {
         "from": "onboarding@resend.dev",
         "to": [email],
@@ -56,100 +57,37 @@ def send_email(name, email, phone, company):
         """
     }
 
-    admin_response = requests.post(url, json=admin_data, headers=headers)
-    print("Admin mail:", admin_response.text)
-
-    user_response = requests.post(url, json=user_data, headers=headers)
-    print("User mail:", user_response.text)
+    requests.post(url, json=admin_data, headers=headers)
+    requests.post(url, json=user_data, headers=headers)
 
 
 @app.get("/", response_class=HTMLResponse)
-def home():
-    return """
-    <html>
-        <head>
-            <title>Demo System</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    max-width: 600px;
-                    margin: 40px auto;
-                    padding: 20px;
-                    line-height: 1.6;
-                }
-                h1 {
-                    margin-bottom: 10px;
-                }
-                form {
-                    margin-top: 20px;
-                    padding: 20px;
-                    border: 1px solid #ddd;
-                    border-radius: 10px;
-                }
-                input {
-                    width: 100%;
-                    padding: 10px;
-                    margin-top: 5px;
-                    margin-bottom: 15px;
-                    border: 1px solid #ccc;
-                    border-radius: 6px;
-                    box-sizing: border-box;
-                }
-                button {
-                    background-color: #4CAF50;
-                    color: white;
-                    padding: 10px 18px;
-                    border: none;
-                    border-radius: 6px;
-                    cursor: pointer;
-                }
-                button:hover {
-                    background-color: #45a049;
-                }
-            </style>
-        </head>
-        <body>
-            <h1>Demo Request Form</h1>
-            <p>Please enter your details below.</p>
+def home(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
 
-            <form action="/submit" method="post">
-                <label>Name:</label>
-                <input type="text" name="name" required>
 
-                <label>Email:</label>
-                <input type="email" name="email" required>
-
-                <label>Phone:</label>
-                <input type="text" name="phone" required>
-
-                <label>Company:</label>
-                <input type="text" name="company">
-
-                <button type="submit">Submit</button>
-            </form>
-        </body>
-    </html>
-    """
+@app.get("/form", response_class=HTMLResponse)
+def form_page(request: Request):
+    return templates.TemplateResponse("form.html", {"request": request})
 
 
 @app.post("/submit", response_class=HTMLResponse)
 def submit(
+    request: Request,
     name: str = Form(...),
     email: str = Form(...),
     phone: str = Form(...),
     company: str = Form("")
 ):
-    # Save to CSV
     with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow([name, email, phone, company])
 
     try:
-        if not RESEND_API_KEY:
-            raise Exception("RESEND_API_KEY not set")
-
-        send_email(name, email, phone, company)
-
+        if RESEND_API_KEY:
+            send_email(name, email, phone, company)
+        else:
+            print("RESEND_API_KEY not set")
     except Exception as e:
         print("Error:", e)
 
@@ -160,7 +98,7 @@ def submit(
             <style>
                 body {{
                     font-family: Arial, sans-serif;
-                    max-width: 600px;
+                    max-width: 700px;
                     margin: 40px auto;
                     padding: 20px;
                     line-height: 1.6;
@@ -174,8 +112,8 @@ def submit(
                     display: inline-block;
                     margin-top: 15px;
                     text-decoration: none;
-                    color: white;
                     background: #4CAF50;
+                    color: white;
                     padding: 10px 16px;
                     border-radius: 6px;
                 }}

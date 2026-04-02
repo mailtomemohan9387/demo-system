@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Demo Request Form</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 700px;
+            margin: 40px auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+
+        form {
+            border: 1px solid #ddd;
+            border-radius: 10px;
+            padding: 20px;
+        }
+
+        input {
+            width: 100%;
+            padding: 10px;
+            margin-top: 5px;
+            margin-bottom: 15px;
+            box-sizing: border-box;
+            border: 1px solid #ccc;
+            border-radius: 6px;
+        }
+
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 10px 18px;
+            border-radius: 6px;
+            cursor: pointer;
+        }
+
+        button:hover {
+            background: #449d48;
+        }
+    </style>
+</head>
+<body>
+    <h2>Demo Request Form</h2>
+    <p>Please enter your details below.</p>
+
+    <form action="/submit" method="post">
+        <label>Name:</label>
+        <input name="name" required>
+
+        <label>Email:</label>
+        <input name="email" required>
+
+        <label>Phone:</label>
+        <input name="phone" required>
+
+        <label>Company:</label>
+        <input name="company">
+
+        <button type="submit">Submit</button>
+    </form>
+</body>
+</html>
