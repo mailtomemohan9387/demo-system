@@ -102,11 +102,14 @@ def submit(
                     margin: 40px auto;
                     padding: 20px;
                     line-height: 1.6;
+                    background: #f9f9f9;
                 }}
                 .box {{
+                    background: white;
                     border: 1px solid #ddd;
-                    border-radius: 10px;
-                    padding: 20px;
+                    border-radius: 12px;
+                    padding: 25px;
+                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
                 }}
                 a {{
                     display: inline-block;
