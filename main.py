@@ -13,9 +13,9 @@ templates = Jinja2Templates(directory="templates")
 app.mount("/images", StaticFiles(directory="images"), name="images")
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
-
 csv_file = "leads.csv"
 
+# leads.csv create if not exists
 if not os.path.exists(csv_file):
     with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
@@ -23,6 +23,10 @@ if not os.path.exists(csv_file):
 
 
 def send_email(name, email, phone, company):
+    if not RESEND_API_KEY:
+        print("RESEND_API_KEY not set")
+        return
+
     url = "https://api.resend.com/emails"
 
     headers = {
@@ -30,6 +34,7 @@ def send_email(name, email, phone, company):
         "Content-Type": "application/json"
     }
 
+    # Admin email
     admin_data = {
         "from": "onboarding@resend.dev",
         "to": ["mailtomemohan94@gmail.com"],
@@ -43,6 +48,7 @@ def send_email(name, email, phone, company):
         """
     }
 
+    # User confirmation email
     user_data = {
         "from": "onboarding@resend.dev",
         "to": [email],
@@ -57,8 +63,12 @@ def send_email(name, email, phone, company):
         """
     }
 
-    requests.post(url, json=admin_data, headers=headers)
-    requests.post(url, json=user_data, headers=headers)
+    try:
+        requests.post(url, json=admin_data, headers=headers, timeout=20)
+        requests.post(url, json=user_data, headers=headers, timeout=20)
+        print("Both emails sent successfully")
+    except Exception as e:
+        print("Email error:", e)
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -71,6 +81,37 @@ def form_page(request: Request):
     return templates.TemplateResponse("form.html", {"request": request})
 
 
+@app.get("/submit", response_class=HTMLResponse)
+def prevent_direct_submit():
+    return """
+    <html>
+        <head>
+            <title>Invalid Access</title>
+            <style>
+                body {
+                    font-family: Arial, sans-serif;
+                    text-align: center;
+                    padding: 40px;
+                }
+                a {
+                    display: inline-block;
+                    margin-top: 20px;
+                    text-decoration: none;
+                    background: #4CAF50;
+                    color: white;
+                    padding: 10px 18px;
+                    border-radius: 6px;
+                }
+            </style>
+        </head>
+        <body>
+            <h2>Please submit the form properly</h2>
+            <a href="/">Back to Home</a>
+        </body>
+    </html>
+    """
+
+
 @app.post("/submit", response_class=HTMLResponse)
 def submit(
     request: Request,
@@ -79,17 +120,13 @@ def submit(
     phone: str = Form(...),
     company: str = Form("")
 ):
+    # Save to CSV
     with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow([name, email, phone, company])
 
-    try:
-        if RESEND_API_KEY:
-            send_email(name, email, phone, company)
-        else:
-            print("RESEND_API_KEY not set")
-    except Exception as e:
-        print("Error:", e)
+    # Send emails
+    send_email(name, email, phone, company)
 
     return f"""
     <html>
@@ -98,18 +135,19 @@ def submit(
             <style>
                 body {{
                     font-family: Arial, sans-serif;
-                    max-width: 700px;
-                    margin: 40px auto;
-                    padding: 20px;
-                    line-height: 1.6;
                     background: #f9f9f9;
+                    margin: 0;
+                    padding: 40px;
                 }}
                 .box {{
+                    max-width: 700px;
+                    margin: auto;
                     background: white;
                     border: 1px solid #ddd;
                     border-radius: 12px;
                     padding: 25px;
                     box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+                    line-height: 1.8;
                 }}
                 a {{
                     display: inline-block;
