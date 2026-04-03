@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Form
+from fastapi import FastAPI, Form, Request
 from fastapi.responses import HTMLResponse
 import csv
 import os
@@ -13,41 +13,34 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 LEADS_FILE = "leads.csv"
 DEMO_FILE = "demo_links.csv"
 
-# Create leads.csv if not exists
-if (not os.path.exists(LEADS_FILE)) or os.path.getsize(LEADS_FILE) == 0:
-    with open(LEADS_FILE, mode="w", newline="", encoding="utf-8") as f:
+# Create files if not exists
+if not os.path.exists(LEADS_FILE):
+    with open(LEADS_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Name", "Email", "Phone", "Company"])
 
-# Create demo_links.csv if not exists or empty
-if (not os.path.exists(DEMO_FILE)) or os.path.getsize(DEMO_FILE) == 0:
-    with open(DEMO_FILE, mode="w", newline="", encoding="utf-8") as f:
+if not os.path.exists(DEMO_FILE):
+    with open(DEMO_FILE, "w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow(["Email", "Token", "Expiry"])
+        writer.writerow(["Email", "Token", "Expiry", "Used"])
 
 
-def send_email(to_email, subject, html_body):
-    if not RESEND_API_KEY:
-        print("RESEND_API_KEY not set")
-        return
-
-    url = "https://api.resend.com/emails"
-    headers = {
-        "Authorization": f"Bearer {RESEND_API_KEY}",
-        "Content-Type": "application/json"
-    }
-
-    data = {
-        "from": "onboarding@resend.dev",
-        "to": [to_email],
-        "subject": subject,
-        "html": html_body
-    }
-
+def send_email(to, subject, html):
     try:
-        response = requests.post(url, json=data, headers=headers, timeout=15)
-        print("Mail status:", response.status_code)
-        print("Mail response:", response.text)
+        requests.post(
+            "https://api.resend.com/emails",
+            headers={
+                "Authorization": f"Bearer {RESEND_API_KEY}",
+                "Content-Type": "application/json",
+            },
+            json={
+                "from": "onboarding@resend.dev",
+                "to": [to],
+                "subject": subject,
+                "html": html,
+            },
+            timeout=15
+        )
     except Exception as e:
         print("Mail error:", e)
 
@@ -55,81 +48,15 @@ def send_email(to_email, subject, html_body):
 @app.get("/", response_class=HTMLResponse)
 def home():
     return """
-    <!DOCTYPE html>
     <html>
-    <head>
-        <title>Demo Request Form</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {
-                font-family: Arial, sans-serif;
-                background: #f5f7fb;
-                margin: 0;
-                padding: 20px;
-            }
-            .box {
-                max-width: 700px;
-                margin: 40px auto;
-                background: white;
-                border-radius: 14px;
-                box-shadow: 0 4px 18px rgba(0,0,0,0.08);
-                padding: 30px;
-            }
-            h2 {
-                margin-top: 0;
-                color: #222;
-            }
-            p {
-                color: #666;
-            }
-            label {
-                font-weight: bold;
-                display: block;
-                margin-top: 15px;
-                margin-bottom: 6px;
-                color: #333;
-            }
-            input {
-                width: 100%;
-                padding: 12px;
-                border: 1px solid #ccc;
-                border-radius: 8px;
-                box-sizing: border-box;
-                font-size: 15px;
-            }
-            button {
-                margin-top: 20px;
-                background: #28a745;
-                color: white;
-                border: none;
-                padding: 12px 22px;
-                border-radius: 8px;
-                font-size: 15px;
-                cursor: pointer;
-            }
-            button:hover {
-                background: #218838;
-            }
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Demo Request Form</h2>
-            <p>Please enter your details below.</p>
-
+    <body style="font-family:Arial;background:#f5f7fb">
+        <div style="max-width:600px;margin:40px auto;background:white;padding:30px;border-radius:12px">
+            <h2>Demo Request</h2>
             <form action="/submit" method="post">
-                <label>Name</label>
-                <input name="name" required>
-
-                <label>Email</label>
-                <input name="email" type="email" required>
-
-                <label>Phone</label>
-                <input name="phone" required>
-
-                <label>Company</label>
-                <input name="company">
-
+                <input name="name" placeholder="Name" required><br><br>
+                <input name="email" placeholder="Email" required><br><br>
+                <input name="phone" placeholder="Phone" required><br><br>
+                <input name="company" placeholder="Company"><br><br>
                 <button type="submit">Submit</button>
             </form>
         </div>
@@ -147,239 +74,102 @@ def submit(
 ):
     now = datetime.now()
 
-    # Save lead
-    with open(LEADS_FILE, mode="a", newline="", encoding="utf-8") as f:
+    # RATE LIMIT CHECK
+    with open(DEMO_FILE, "r", encoding="utf-8") as f:
+        reader = csv.reader(f)
+        next(reader, None)
+        for row in reader:
+            if row[0] == email:
+                expiry = datetime.fromisoformat(row[2])
+                if now < expiry:
+                    return "<h3>You already have active demo link. Check your email.</h3>"
+
+    # SAVE LEAD
+    with open(LEADS_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow([name, email, phone, company])
 
-    # Generate token
     token = str(uuid.uuid4())
     expiry = now + timedelta(hours=1)
 
-    # Save demo token
-    with open(DEMO_FILE, mode="a", newline="", encoding="utf-8") as f:
+    # SAVE DEMO TOKEN
+    with open(DEMO_FILE, "a", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
-        writer.writerow([email, token, expiry.isoformat()])
+        writer.writerow([email, token, expiry.isoformat(), "no"])
 
-    demo_link = f"https://demo-system-9qv6.onrender.com/demo/{token}"
+    # ONLY IMPORTANT CHANGE:
+    demo_link = "https://nonacquisitive-kirk-bipyramidal.ngrok-free.dev/web/login"
 
-    # Admin mail
+    # EMAILS
     send_email(
         "mailtomemohan94@gmail.com",
         "New Demo Request",
-        f"""
-        <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>New Demo Request</h2>
-            <p><b>Name:</b> {name}</p>
-            <p><b>Email:</b> {email}</p>
-            <p><b>Phone:</b> {phone}</p>
-            <p><b>Company:</b> {company}</p>
-        </div>
-        """
+        f"<b>{name}</b><br>{email}<br>{phone}<br>{company}"
     )
 
-    # User confirmation mail
     send_email(
         email,
         "Thanks for contacting us",
-        f"""
-        <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Thanks for contacting us</h2>
-            <p>Hi {name},</p>
-            <p>Thanks for your interest.</p>
-            <p>We have received your demo request successfully.</p>
-            <p>Our team will contact you shortly.</p>
-            <p>Regards,<br>Mohan</p>
-        </div>
-        """
+        f"Hi {name},<br>We received your request."
     )
 
-    # Demo link mail
     send_email(
         email,
-        "Your Demo Access Link (Valid for 1 Hour)",
+        "Your Demo Link",
         f"""
-        <div style="font-family:Arial,sans-serif;line-height:1.6">
-            <h2>Your Demo Access Link</h2>
-            <p>Your demo link is ready.</p>
-            <p>This link is valid for <b>1 hour only</b>.</p>
-            <p>
-                <a href="{demo_link}" style="display:inline-block;padding:10px 16px;background:#28a745;color:white;text-decoration:none;border-radius:6px;">
-                    Open Demo
-                </a>
-            </p>
-            <p>Or copy this link:</p>
-            <p>{demo_link}</p>
-        </div>
+        Click below:<br>
+        <a href="{demo_link}">Open Demo</a><br><br>
+        Username: demo@demo.co<br>
+        Password: demo
         """
     )
 
-    return f"""
-    <!DOCTYPE html>
-    <html>
-    <head>
-        <title>Success</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background: #f5f7fb;
-                margin: 0;
-                padding: 20px;
-            }}
-            .box {{
-                max-width: 700px;
-                margin: 40px auto;
-                background: white;
-                border-radius: 14px;
-                box-shadow: 0 4px 18px rgba(0,0,0,0.08);
-                padding: 30px;
-                line-height: 1.8;
-            }}
-            h2 {{
-                color: #222;
-                margin-top: 0;
-            }}
-            p {{
-                color: #444;
-            }}
-            a {{
-                display: inline-block;
-                margin-top: 20px;
-                text-decoration: none;
-                background: #28a745;
-                color: white;
-                padding: 12px 20px;
-                border-radius: 8px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Saved Successfully</h2>
-            <p><b>Name:</b> {name}</p>
-            <p><b>Email:</b> {email}</p>
-            <p><b>Phone:</b> {phone}</p>
-            <p><b>Company:</b> {company}</p>
-            <p>We will contact you soon.</p>
-            <a href="/">Back to Form</a>
-        </div>
-    </body>
-    </html>
-    """
+    return "<h3>Success! Check your email.</h3>"
 
 
 @app.get("/demo/{token}", response_class=HTMLResponse)
 def demo(token: str):
-    valid = False
-    matched_email = ""
+    rows = []
+    valid_row = None
 
-    # Ensure demo file exists with header before reading
-    if (not os.path.exists(DEMO_FILE)) or os.path.getsize(DEMO_FILE) == 0:
-        with open(DEMO_FILE, mode="w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(["Email", "Token", "Expiry"])
-
-    with open(DEMO_FILE, mode="r", encoding="utf-8") as f:
+    with open(DEMO_FILE, "r", encoding="utf-8") as f:
         reader = csv.reader(f)
-        next(reader, None)
+        headers = next(reader)
+        rows = list(reader)
 
-        for row in reader:
-            if len(row) < 3:
-                continue
+    for row in rows:
+        if row[1] == token:
+            valid_row = row
+            break
 
-            saved_email = row[0]
-            saved_token = row[1]
-            saved_expiry = row[2]
+    if not valid_row:
+        return "<h3>Invalid link</h3>"
 
-            if saved_token == token:
-                matched_email = saved_email
-                expiry_time = datetime.fromisoformat(saved_expiry)
+    email, token, expiry, used = valid_row
+    expiry_time = datetime.fromisoformat(expiry)
 
-                if datetime.now() < expiry_time:
-                    valid = True
-                break
+    if datetime.now() > expiry_time:
+        return "<h3>Link expired</h3>"
 
-    if not valid:
-        return """
-        <!DOCTYPE html>
-        <html>
-        <head>
-            <title>Link Expired</title>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    background: #f5f7fb;
-                    margin: 0;
-                    padding: 20px;
-                }
-                .box {
-                    max-width: 700px;
-                    margin: 40px auto;
-                    background: white;
-                    border-radius: 14px;
-                    box-shadow: 0 4px 18px rgba(0,0,0,0.08);
-                    padding: 30px;
-                    line-height: 1.8;
-                }
-                a {
-                    display: inline-block;
-                    margin-top: 20px;
-                    text-decoration: none;
-                    background: #dc3545;
-                    color: white;
-                    padding: 12px 20px;
-                    border-radius: 8px;
-                }
-            </style>
-        </head>
-        <body>
-            <div class="box">
-                <h2>Link expired or invalid</h2>
-                <p>Please request a new demo link.</p>
-                <a href="/">Request Again</a>
-            </div>
-        </body>
-        </html>
-        """
+    if used == "yes":
+        return "<h3>Link already used</h3>"
+
+    # MARK USED
+    for r in rows:
+        if r[1] == token:
+            r[3] = "yes"
+
+    with open(DEMO_FILE, "w", newline="", encoding="utf-8") as f:
+        writer = csv.writer(f)
+        writer.writerow(["Email", "Token", "Expiry", "Used"])
+        writer.writerows(rows)
 
     return f"""
-    <!DOCTYPE html>
     <html>
-    <head>
-        <title>Demo Access</title>
-        <meta name="viewport" content="width=device-width, initial-scale=1.0">
-        <style>
-            body {{
-                font-family: Arial, sans-serif;
-                background: #f5f7fb;
-                margin: 0;
-                padding: 20px;
-            }}
-            .box {{
-                max-width: 800px;
-                margin: 40px auto;
-                background: white;
-                border-radius: 14px;
-                box-shadow: 0 4px 18px rgba(0,0,0,0.08);
-                padding: 30px;
-                line-height: 1.8;
-            }}
-            .warn {{
-                color: red;
-                font-weight: bold;
-            }}
-            ul {{
-                padding-left: 20px;
-            }}
-        </style>
-    </head>
-    <body>
-        <div class="box">
-            <h2>Demo Access (Read Only)</h2>
-            <p>Welcome, <b>{matched_email}</b></p>
-            <p>This demo link is valid for 1 hour only.</p>
+    <body style="font-family:Arial;background:#f5f7fb">
+        <div style="max-width:700px;margin:40px auto;background:white;padding:30px;border-radius:12px">
+            <h2>Demo Access (Secure)</h2>
+            <p>Welcome: {email}</p>
 
             <ul>
                 <li>Customer: Demo User</li>
@@ -388,7 +178,7 @@ def demo(token: str):
                 <li>Plan: Premium</li>
             </ul>
 
-            <p class="warn">Demo Only - No download allowed</p>
+            <p style="color:red">Read Only | No Download</p>
         </div>
     </body>
     </html>
