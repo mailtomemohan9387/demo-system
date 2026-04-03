@@ -13,12 +13,14 @@ RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 LEADS_FILE = "leads.csv"
 DEMO_FILE = "demo_links.csv"
 
-if not os.path.exists(LEADS_FILE):
+# Create leads.csv if not exists
+if (not os.path.exists(LEADS_FILE)) or os.path.getsize(LEADS_FILE) == 0:
     with open(LEADS_FILE, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Name", "Email", "Phone", "Company"])
 
-if not os.path.exists(DEMO_FILE):
+# Create demo_links.csv if not exists or empty
+if (not os.path.exists(DEMO_FILE)) or os.path.getsize(DEMO_FILE) == 0:
     with open(DEMO_FILE, mode="w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f)
         writer.writerow(["Email", "Token", "Expiry"])
@@ -271,6 +273,12 @@ def submit(
 def demo(token: str):
     valid = False
     matched_email = ""
+
+    # Ensure demo file exists with header before reading
+    if (not os.path.exists(DEMO_FILE)) or os.path.getsize(DEMO_FILE) == 0:
+        with open(DEMO_FILE, mode="w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Email", "Token", "Expiry"])
 
     with open(DEMO_FILE, mode="r", encoding="utf-8") as f:
         reader = csv.reader(f)
