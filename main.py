@@ -1,21 +1,17 @@
 from fastapi import FastAPI, Form
 from fastapi.responses import HTMLResponse
-from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
-import os
 import csv
+import os
 import requests
 
 app = FastAPI()
-
 templates = Jinja2Templates(directory="templates")
-app.mount("/images", StaticFiles(directory="images"), name="images")
 
 RESEND_API_KEY = os.getenv("RESEND_API_KEY")
 csv_file = "leads.csv"
 
-# leads.csv create if not exists
 if not os.path.exists(csv_file):
     with open(csv_file, mode="w", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
@@ -28,13 +24,11 @@ def send_email(name, email, phone, company):
         return
 
     url = "https://api.resend.com/emails"
-
     headers = {
         "Authorization": f"Bearer {RESEND_API_KEY}",
         "Content-Type": "application/json"
     }
 
-    # Admin email
     admin_data = {
         "from": "onboarding@resend.dev",
         "to": ["mailtomemohan94@gmail.com"],
@@ -48,7 +42,6 @@ def send_email(name, email, phone, company):
         """
     }
 
-    # User confirmation email
     user_data = {
         "from": "onboarding@resend.dev",
         "to": [email],
@@ -73,43 +66,7 @@ def send_email(name, email, phone, company):
 
 @app.get("/", response_class=HTMLResponse)
 def home(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
-
-
-@app.get("/form", response_class=HTMLResponse)
-def form_page(request: Request):
     return templates.TemplateResponse("form.html", {"request": request})
-
-
-@app.get("/submit", response_class=HTMLResponse)
-def prevent_direct_submit():
-    return """
-    <html>
-        <head>
-            <title>Invalid Access</title>
-            <style>
-                body {
-                    font-family: Arial, sans-serif;
-                    text-align: center;
-                    padding: 40px;
-                }
-                a {
-                    display: inline-block;
-                    margin-top: 20px;
-                    text-decoration: none;
-                    background: #4CAF50;
-                    color: white;
-                    padding: 10px 18px;
-                    border-radius: 6px;
-                }
-            </style>
-        </head>
-        <body>
-            <h2>Please submit the form properly</h2>
-            <a href="/">Back to Home</a>
-        </body>
-    </html>
-    """
 
 
 @app.post("/submit", response_class=HTMLResponse)
@@ -120,12 +77,10 @@ def submit(
     phone: str = Form(...),
     company: str = Form("")
 ):
-    # Save to CSV
     with open(csv_file, mode="a", newline="", encoding="utf-8") as file:
         writer = csv.writer(file)
         writer.writerow([name, email, phone, company])
 
-    # Send emails
     send_email(name, email, phone, company)
 
     return f"""
@@ -135,19 +90,15 @@ def submit(
             <style>
                 body {{
                     font-family: Arial, sans-serif;
-                    background: #f9f9f9;
-                    margin: 0;
-                    padding: 40px;
+                    max-width: 700px;
+                    margin: 40px auto;
+                    padding: 20px;
+                    line-height: 1.6;
                 }}
                 .box {{
-                    max-width: 700px;
-                    margin: auto;
-                    background: white;
                     border: 1px solid #ddd;
-                    border-radius: 12px;
-                    padding: 25px;
-                    box-shadow: 0 2px 8px rgba(0,0,0,0.08);
-                    line-height: 1.8;
+                    border-radius: 10px;
+                    padding: 20px;
                 }}
                 a {{
                     display: inline-block;
@@ -168,7 +119,7 @@ def submit(
                 <p><b>Phone:</b> {phone}</p>
                 <p><b>Company:</b> {company}</p>
                 <p>We will contact you soon.</p>
-                <a href="/">Back to Home</a>
+                <a href="/">Back to Form</a>
             </div>
         </body>
     </html>
